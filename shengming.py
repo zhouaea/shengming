@@ -6,75 +6,66 @@ import pandas as pd
 import sys
 import datetime
 
-# TODO: Parse function -> send each day's text to either tags, score, happiness, etc.
+# Manually create a list of tags
+tags = ["sleep", "exercise", "social", "research", "leisure", "school", "maintenance", "happiness"]
 
-
-def score():
-    db = TinyDB('db.json')
-    days_table = db.table('days')
-    gp = {'score':[], 'date':[], 'avg':[]}
-    queue = deque([])
-    total = 0
-    days = []
-    for day in days_table:
-        days.append(day)
-    days.reverse()
-
-    for day in days:
-        gp['score'].append(day['score'])
-        gp['date'].append(day['date'])
-        total += day['score'] 
-        queue.append(day['score'])
-        if len(queue) == 8:
-            total -= queue.popleft()
-        gp['avg'].append(total / len(queue))
-
-    df = pd.DataFrame(gp)
-
-    fig, ax = plt.subplots()
-
-    ax.plot('date', 'score', data=df, color="gainsboro")
-    ax.plot('date', 'avg', data=df, color="black")
-    ax.set_title("Daily Scores")
-
-    fig.autofmt_xdate()
-
-    plt.savefig('score_plot.png')
-
-def graph(tag):
+def graph():
+    # TODO Create plots for each tag.
     db = TinyDB('db.json')
     days_table = db.table('days')
     gp = {'time':[], 'date':[], 'avg':[]}
     queue = deque([])
     total = 0
     days = []
-    for day in days_table:
-        days.append(day)
-    days.reverse()
 
-    for day in days:
-        tt = 0
-        if tag in day['tags']:
-            tt = day['tags'][tag]
-        gp['time'].append(tt)
-        gp['date'].append(day['date'])
-        total += tt
-        queue.append(tt)
-        if len(queue) == 8:
-            total -= queue.popleft()
-        gp['avg'].append(total / len(queue))
+    # Create plots for every tag.
+    for tag in tags:
+        total = 0
+        gp['time'].clear()
+        gp['date'].clear()
+        gp['avg'].clear()
+        queue.clear()
+        # Iterate through each day's log.
+        for day in days_table:
+            tag_time = 0
+            
+            # Ignore tag if it is not in daily log.
+            if not(tag in day['tags']):
+                continue
 
-    df = pd.DataFrame(gp)
+            # If data is in minutes, convert to hours.
+            if day['tags'][tag] > 30:
+                tag_time = day['tags'][tag] / 60
+            else:
+                tag_time = day['tags'][tag]
 
-    fig, ax = plt.subplots()
+            gp['time'].append(tag_time)
+            gp['date'].append(day['date'])
 
-    ax.plot('date', 'time', data=df, color="gainsboro")
-    ax.plot('date', 'avg', data=df, color="black")
-    ax.set_title("Time spent on @{}".format(tag))
+            # Create graph out of average trend.
+            total += tag_time
+            queue.append(tag_time)
+            gp['avg'].append(total / len(queue))
 
-    fig.autofmt_xdate()
+        df = pd.DataFrame(gp)
 
-    plt.savefig('plot.png')
+        fig, ax = plt.subplots()
+
+        if tag == 'happiness':
+            ax.set_title("Happiness score (1-10)")
+            ax.set_ylabel('score')
+            ax.set_xlabel('days')
+        else:
+            ax.set_title("Time spent on @{}".format(tag))
+            ax.set_ylabel('hours')
+            ax.set_xlabel('days')
+
+        ax.plot('date', 'time', data=df, color="gainsboro")
+        ax.plot('date', 'avg', data=df, color="black")
+
+        fig.autofmt_xdate()
+
+        plt.savefig("plots/" + tag + ".png")
 
 def parse():
     # TODO: Add way for scores / 30 minutes
@@ -83,12 +74,13 @@ def parse():
     tags = []
 
     lastScore = 0
-    lastTime = 0
+    lastag_timeime = 0
 
     # TODO: Different tables for days/tags/etc.
     db = TinyDB('db.json')
+    db2 = TinyDB('db2.json')
     days = db.table('days')
-    days.truncate()
+    days2 = db.table('days')
 
     try:
         log = open("life.sm", "r")
@@ -112,7 +104,7 @@ def parse():
             dd['date'] = words[0].strip()
             dd['score'] = 0
             dd['tags'] = {}
-            lastTime = 0
+            lastag_timeime = 0
             tags.clear()
             continue
 
@@ -121,8 +113,8 @@ def parse():
 
         time_passed = time_to_minutes(words[0])
         # Process last one
-        if lastTime != 0:
-            dd['score'] += (time_passed - lastTime) / 15 * lastScore
+        if lastag_timeime != 0:
+            dd['score'] += (time_passed - lastag_timeime) / 15 * lastScore
             for tag in tags:
                 temp_tags = []
                 tag_split = tag.split("(")
@@ -132,9 +124,9 @@ def parse():
                     else:
                         temp_tags.append(section)
 
-                for ttag in temp_tags:
-                    dd['tags'].setdefault(ttag, 0)
-                    dd['tags'][ttag] += time_passed - lastTime
+                for tag_timeag in temp_tags:
+                    dd['tags'].setdefault(tag_timeag, 0)
+                    dd['tags'][tag_timeag] += time_passed - lastag_timeime
 
         # Push Current (Not if FIN)
         tags.clear()
@@ -143,7 +135,7 @@ def parse():
             dd.clear()
             continue
 
-        lastTime = time_passed
+        lastag_timeime = time_passed
         lastScore = 0
         for word in words:
             if word[0] == '@':
@@ -154,14 +146,11 @@ def parse():
                 lastScore = int(word[1:])
 
 def paper_parse():
-    # Manually create a list of tags
-    tags = ["exercise", "social", "research", "leisure", "school", "maintenance", "happiness"]
-
     day = {}
 
-    # Store date (year-month-day) in the date key.
+    # Store date month/day/year in the date key.
     date = datetime.datetime.now()
-    day["date"] = date.strftime("%Y-%m-%d")
+    day["date"] = date.strftime("%x")
 
     tag_hours = {}
 
@@ -177,7 +166,10 @@ def paper_parse():
 
     db = TinyDB('db.json')
     days = db.table('days')
+    db2 = TinyDB('db2.json')
+    days2 = db2.table('days')
     days.insert(day)
+    days2.insert(day)
     print("Hours stored.")
 
 def time_to_minutes(time):
@@ -197,24 +189,15 @@ def main():
     group = parser.add_mutually_exclusive_group()
 
     group.add_argument("-u", "--update", help="Update database")
-    group.add_argument("-s", "--stats", metavar="tag", help="Get stats for tag")
-    group.add_argument("-c", "--score", help="Get stats for tag")
-    group.add_argument("-p", "--paper", action="store_true", help="Input hours per tag instead of schedule")
+    group.add_argument("-g", "--graph", action='store_true', help="Create graph of hours")
 
     args = parser.parse_args()
 
-    if args.stats != None:
-        graph(args.stats)
+    if args.graph != None:
+        graph()
         sys.exit()
 
-    if args.score != None:
-        score()
-        sys.exit()
-
-    if args.paper:
-        paper_parse()
-    else:
-        parse()
+    paper_parse()
 
 
 
